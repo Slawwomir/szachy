@@ -18,6 +18,7 @@ public class Pawn extends Piece {
         super(board, coord, owner, 10);
         name = "pawn";
         setImage();
+        number = 1;
         evaluation = new double[][] {
                 {0,  0,  0,  0,  0,  0,  0,  0},
                 {5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0},

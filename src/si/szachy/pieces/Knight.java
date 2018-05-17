@@ -7,6 +7,7 @@ public class Knight extends Piece {
     public Knight(Chessboard board, Coordinate coord, int owner) {
         super(board, coord, owner, 30);
         name = "knight";
+        number = 3;
         evaluation = new double[][] {
                 {-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0},
                 {-4.0, -2.0,  0.0,  0.0,  0.0,  0.0, -2.0, -4.0},

@@ -9,7 +9,7 @@ public class Rook extends Piece {
     public Rook(Chessboard board, Coordinate coord, int owner) {
         super(board, coord, owner, 50);
         name = "rook";
-        
+        number = 7;
         evaluation = new double[][] {
                 {  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0},
                 {  0.5,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  0.5},

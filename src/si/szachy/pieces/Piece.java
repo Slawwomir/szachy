@@ -12,6 +12,7 @@ abstract public class Piece {
     protected Chessboard board;
     protected Coordinate coord;
     protected int owner;
+    protected int number;
     protected Image image;
     protected String name;
     public boolean isAlive = true;
@@ -79,6 +80,8 @@ abstract public class Piece {
     public Coordinate getCoord() {
         return coord;
     }
+
+    public int getNumber() { return number; }
 
     public int getX() {
         return coord.x;

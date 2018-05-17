@@ -9,6 +9,7 @@ public class Queen extends Piece {
     public Queen(Chessboard board, Coordinate coord, int owner) {
         super(board, coord, owner, 90);
         name = "queen";
+        number = 9;
         evaluation = new double[][] {
                 { -2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0},
                 { -1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0},

@@ -35,7 +35,7 @@ public class MainWindow extends JFrame {
         board = new Chessboard();
         board.newGame(rotated);
         //     PlayerHuman human = new PlayerHuman(board, 0);
-        PlayerAI ai = new PlayerAI(board, 2, 1);
+        PlayerAI ai = new PlayerAI(board, 3, 1);
         PlayerAI ai2 = new PlayerAI(board, 3, 0);
 
         initializeWindow();
