@@ -62,6 +62,7 @@ abstract public class Piece {
     public boolean isInDanger() {
         ArrayList<Piece> pieces = board.getPieces();
         for (Piece p : pieces) {
+            if(p.getClass() != King.class)
             if (p.canReach(getX(), getY()))
                 return true;
         }

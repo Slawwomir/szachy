@@ -6,10 +6,7 @@ import si.szachy.Coordinate;
 import si.szachy.pieces.Piece;
 
 import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,11 +19,13 @@ public class PlayerAI extends Player {
 
     public PlayerAI(Chessboard board, int playerTeam) {
         super(board, playerTeam);
+        Zobrist.initialize();
         DEPTH = 2;
     }
 
     public PlayerAI(Chessboard board, int depth, int playerTeam) {
         super(board, playerTeam);
+        Zobrist.initialize();
         DEPTH = depth;
     }
 
@@ -78,6 +77,7 @@ public class PlayerAI extends Player {
                     } else bestValue -= 100;
                 }
             } catch (Exception e) {
+                e.printStackTrace();
             }
         }
 
@@ -123,7 +123,6 @@ public class PlayerAI extends Player {
             }
             MiniMax miniMax = new MiniMax(DEPTH, (playerTeam + 1) % 2, playerTeam, copyBoard);
             valuesForeachMove.add(new triple<>(p, c, executorService.submit(miniMax)));
-
             p.setCoord(prev);
             if (at != null) {
                 at.isAlive = true;
@@ -174,35 +173,57 @@ class triple<K, V, E> {
 
 class MiniMax implements Callable<Double> {
 
+    private final int hashRange = 1 << 10;
+
     private Chessboard board;
     private int depth;
     private int actualPlayer;
     private int owner;
     private static final double alpha = -999999.0;
     private static final double beta = 999999.0;
-    private List<ArrayList<triple<Piece, Coordinate, Coordinate>>> killerMoves = new ArrayList<ArrayList<triple<Piece, Coordinate,Coordinate>>>();
+    private List<ArrayList<triple<Piece, Coordinate, Coordinate>>> killerMoves = new ArrayList<>();
+    private HashMap<Integer, HashPoint> hashes = new HashMap<>();
+    private Zobrist zobrist;
+
+    //private tuple<Piece, Coordinate> bestMove;
 
     MiniMax(int depth, int firstPlayer, int owner, Chessboard board) {
         this.depth = depth;
         this.board = board;
         actualPlayer = firstPlayer;
         this.owner = owner;
+        this.zobrist = new Zobrist(board);
         for(int i = 0; i <= depth; i++)
             killerMoves.add(new ArrayList<>());
     }
 
     @Override
     public Double call() {
+
+        int actual = 3;
+        while(actual < depth){
+            evaluateMoves(actual, alpha, beta, actualPlayer);
+            actual+=2;
+        }
+
         return evaluateMoves(depth, alpha, beta, actualPlayer);
     }
 
     private double evaluateMoves(int depth, double alpha, double beta, int actualPlayer) {
-        if (depth == 0)
-            return evaluateBoard();
+        Double evaluation;
+        if((evaluation = checkHash(zobrist.getHash(), alpha, beta, depth)) != null)
+            return evaluation;
+
+        if (depth == 0) {
+            evaluation = evaluateBoard();
+            addHash(new HashPoint(zobrist.getHash(), depth, evaluation, HashFlag.HASH_EXACT, null));
+            return evaluation;
+        }
 
         double minmax = actualPlayer == owner ? MiniMax.alpha : MiniMax.beta;
         List<Piece> pieces = new ArrayList<>(board.getPieces());
         boolean checkKillers = false;
+
 
         for(triple<Piece, Coordinate, Coordinate> killer : killerMoves.get(depth)){
             if(pieces.contains(killer.key) && killer.key.getX() == killer.value.x && killer.key.getY() == killer.value.y){
@@ -212,53 +233,116 @@ class MiniMax implements Callable<Double> {
             }
         }
 
+        /////JUST DO IT!
+        tuple<Piece, Coordinate> addAtBeginning = getBestMove(zobrist.getHash());
+        boolean setCoordAtBeginning = false;
+        if(addAtBeginning != null){
+            if(pieces.contains(addAtBeginning.key)){
+                //pieces.remove(addAtBeginning.key);
+                pieces.clear();
+                pieces.add(0, addAtBeginning.key);
+                setCoordAtBeginning = true;
+            }
+        }
 
+        tuple<Piece, Coordinate> bestMove = null;
+
+        HashFlag flag = HashFlag.HASH_ALPHA;
         int counter = 0;
         for (Piece p : pieces) {
             if (p.isAlive) {
                 List<Coordinate> coordinates = p.getAllValidMoves();
 
-                if(checkKillers && counter < killerMoves.get(depth).size()){
-                    Coordinate coord = killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).ext;
-                    counter++;
+                if(setCoordAtBeginning){
+                    coordinates.clear();
+                    coordinates.add(addAtBeginning.value);
+                    /*
                     int co = 0;
+                    boolean isInside = false;
                     for(Coordinate c: coordinates){
-                        if(c.x == coord.x && c.y == coord.y){
+                        if(c.x == addAtBeginning.value.x && c.y == addAtBeginning.value.y){
+                            isInside = true;
                             break;
                         }
                         co++;
                     }
-                    coordinates.add(0, coord);
+                    if(isInside) {
+                        coordinates.remove(co);
+                        coordinates.add(0, addAtBeginning.value);
+                    }
+                    */
+                    setCoordAtBeginning = false;
+                }
+                else if(checkKillers && counter < killerMoves.get(depth).size() && killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).key == p){
+                    Coordinate coord = killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).ext;
+                    counter++;
+                    int co = 0;
+                    boolean isInside = false;
+                    for(Coordinate c: coordinates){
+                        if(c.x == coord.x && c.y == coord.y){
+                            isInside = true;
+                            break;
+                        }
+                        co++;
+                    }
+                    if(isInside) {
+                        coordinates.remove(co);
+                        coordinates.add(0, coord);
+                    }
                 }
 
                 for (Coordinate destination : coordinates) {
                     Piece opponent = board.peek(destination);
                     Coordinate previousCoords = p.getCoord();
 
+
                     //MAKE MOVE/////////////////////////////////////////////////////////////////////////////////////////
-                    if (opponent != null) opponent.die();
+                    if (opponent != null) {
+                        opponent.die();
+                        zobrist.set(opponent, destination);
+                    }
+                    zobrist.set(p, destination);
+                    zobrist.set(p, previousCoords);
 
                     p.setCoord(destination);
                     board.setField(destination.x, destination.y, p);
                     board.setField(previousCoords.x, previousCoords.y, null);
+
                     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+                    double evalNext = evaluateMoves(depth - 1, alpha, beta, (actualPlayer + 1) % 2);
                     if (actualPlayer == owner) {
-                        minmax = Math.max(minmax, evaluateMoves(depth - 1, alpha, beta, (actualPlayer + 1) % 2));
+                        if(minmax < evalNext){
+                            bestMove = new tuple<>(p, destination);
+                        }
+                        minmax = Math.max(minmax, evalNext);
+                        if(minmax > alpha)
+                            flag = HashFlag.HASH_EXACT;
+
                         alpha = Math.max(minmax, alpha);
                     } else {
+                        if(minmax > evalNext){
+                            bestMove = new tuple<>(p, destination);
+                        }
                         minmax = Math.min(minmax, evaluateMoves(depth - 1, alpha, beta, (actualPlayer + 1) % 2));
                         beta = Math.min(minmax, beta);
                     }
 
                     //UNDO MOVE/////////////////////////////////////////////////////////////////////////////////////////
 
-                    p.setCoord(previousCoords);
 
-                    if (opponent != null) board.wake(opponent);
+                    p.setCoord(previousCoords);
 
                     board.setField(destination.getX(), destination.getY(), opponent);
                     board.setField(p.getX(), p.getY(), p);
+
+                    if (opponent != null) {
+                        board.wake(opponent);
+                        zobrist.set(opponent, destination);
+                    }
+
+                    zobrist.set(p, destination);
+                    zobrist.set(p, previousCoords);
 
                     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -275,11 +359,14 @@ class MiniMax implements Callable<Double> {
 
                         if(!isIn)
                             killerMoves.get(depth).add(new triple<>(p, p.getCoord(), destination));
+
+                        addHash(new HashPoint(zobrist.getHash(), depth, evaluateBoard(), HashFlag.HASH_BETA, null));
                         return minmax;
                     }
                 }
             }
         }
+        addHash(new HashPoint(zobrist.getHash(), depth, evaluateBoard(), flag, bestMove));
         return minmax;
     }
 
@@ -293,11 +380,41 @@ class MiniMax implements Callable<Double> {
         }
         return value;
     }
+
+    private void addHash(HashPoint hash){
+        hashes.put((int)(hash.getZobristKey() % hashRange), hash);
+    }
+
+    private Double checkHash(long zobristKey, double alpha, double beta, int deepnes){
+        HashPoint previous = hashes.get((int)(zobristKey % hashRange));
+
+        if(previous == null)
+            return null;
+
+        if(previous.getZobristKey() == zobristKey){
+            if(previous.getDepth() >= deepnes){
+                if(previous.getFlag() == HashFlag.HASH_EXACT)
+                    return previous.getEvaluation();
+                if(previous.getFlag() == HashFlag.HASH_ALPHA && previous.getEvaluation() <= alpha)
+                    return alpha;
+                if(previous.getFlag() == HashFlag.HASH_BETA && previous.getEvaluation() >= beta)
+                    return beta;
+            }
+        }
+        return null;
+    }
+
+    private tuple<Piece, Coordinate> getBestMove(Long hash){
+        HashPoint point = hashes.get((int)(hash % hashRange));
+        if(point != null && point.getZobristKey() == hash)
+            return point.getBestMove();
+        return null;
+    }
 }
 
 class Zobrist {
-    private long[][] array = new long[64][12];
-    private int[] board = new int[64];
+    public static final long[][] array = new long[64][13];
+    public int[] board = new int[64];
     public static final int whitePawn =     1;
     public static final int blackPawn =     2;
     public static final int whiteKnight =   3;
@@ -313,12 +430,18 @@ class Zobrist {
     public static final int empty =         0;
     public static final int nothing =      -1;
 
-    private long hash;
+    private Chessboard chessboard;
+    private long hash = 0;
+
+    public static void initialize(){
+        for(int i = 0; i < 64; i++)
+            array[i] = new Random().longs(13).toArray();
+    }
 
     public Zobrist(Chessboard board){
+        this.chessboard = board;
         this.board = convert(board);
-        for(int i = 0; i < 64; i++)
-            array[i] = new Random().longs(12).toArray();
+        updateHash();
     }
 
     public void updateHash(){
@@ -330,7 +453,7 @@ class Zobrist {
     }
 
     public long getHash() {
-        updateHash();
+        //updateHash();
         return hash;
     }
 
@@ -358,6 +481,12 @@ class Zobrist {
         board[from] = empty;
     }
 
+    public void set(Piece p, Coordinate coordinate){
+        int to = coordinate.y * 8 + coordinate.x;
+        int piece = p.getNumber() + p.getOwner();
+
+        hash ^= array[to][piece];
+    }
 }
 
 enum HashFlag {
@@ -366,18 +495,49 @@ enum HashFlag {
     HASH_ALPHA
 }
 
-class HashPoint {
-    long zobristKey;
-    int depth;
-    int evaluation;
-    HashFlag flag;
-    tuple<Piece, Coordinate> bestMove;
+final class HashPoint {
+    private long zobristKey;
+    private int depth;
+    private double evaluation;
+    private HashFlag flag;
+    private tuple<Piece, Coordinate> bestMove;
 
-    public HashPoint(long zobristKey, int depth, int evaluation, HashFlag flag, tuple<Piece, Coordinate> bestMove) {
+    public HashPoint(long zobristKey, int depth, double evaluation, HashFlag flag, tuple<Piece, Coordinate> bestMove) {
         this.zobristKey = zobristKey;
         this.depth = depth;
         this.evaluation = evaluation;
         this.flag = flag;
         this.bestMove = bestMove;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if(obj.getClass() == HashPoint.class){
+            HashPoint in = (HashPoint) obj;
+            return  in.zobristKey == zobristKey;
+        }
+        else
+            return false;
+    }
+
+    public long getZobristKey() {
+        return zobristKey;
+    }
+
+    public int getDepth() {
+        return depth;
+    }
+
+    public double getEvaluation() {
+        return evaluation;
+    }
+
+    public HashFlag getFlag() {
+        return flag;
+    }
+
+    public tuple<Piece, Coordinate> getBestMove() {
+        return bestMove;
+    }
 }
+
