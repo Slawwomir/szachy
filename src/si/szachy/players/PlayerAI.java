@@ -173,12 +173,14 @@ class triple<K, V, E> {
 
 class MiniMax implements Callable<Double> {
 
-    private final int hashRange = 1 << 10;
+    private final int hashRange = 1 << 20;
 
     private Chessboard board;
     private int depth;
     private int actualPlayer;
     private int owner;
+    private int licznik0 = 0;
+    private int licznik1 = 0;
     private static final double alpha = -999999.0;
     private static final double beta = 999999.0;
     private List<ArrayList<triple<Piece, Coordinate, Coordinate>>> killerMoves = new ArrayList<>();
@@ -206,13 +208,18 @@ class MiniMax implements Callable<Double> {
             actual+=2;
         }
 
-        return evaluateMoves(depth, alpha, beta, actualPlayer);
+licznik0 = licznik1 = 0;
+double x =  evaluateMoves(depth, alpha, beta, actualPlayer);
+return x;
     }
 
     private double evaluateMoves(int depth, double alpha, double beta, int actualPlayer) {
         Double evaluation;
-        if((evaluation = checkHash(zobrist.getHash(), alpha, beta, depth)) != null)
+        licznik0++;
+        if((evaluation = checkHash(zobrist.getHash(), alpha, beta, depth)) != null) {
+            licznik1++;
             return evaluation;
+        }
 
         if (depth == 0) {
             evaluation = evaluateBoard();
@@ -221,27 +228,24 @@ class MiniMax implements Callable<Double> {
         }
 
         double minmax = actualPlayer == owner ? MiniMax.alpha : MiniMax.beta;
-        List<Piece> pieces = new ArrayList<>(board.getPieces());
+        List<Piece> pieces = new ArrayList<>(board.getPieces(actualPlayer));
         boolean checkKillers = false;
 
+        tuple<Piece, Coordinate> addAtBeginning = getBestMove(zobrist.getHash());
+        boolean setCoordAtBeginning = false;
+        if(addAtBeginning != null){
+            if(pieces.contains(addAtBeginning.key)){
+                pieces.remove(addAtBeginning.key);
+                pieces.add(0, addAtBeginning.key);
+                setCoordAtBeginning = true;
+            }
+        }
 
         for(triple<Piece, Coordinate, Coordinate> killer : killerMoves.get(depth)){
             if(pieces.contains(killer.key) && killer.key.getX() == killer.value.x && killer.key.getY() == killer.value.y){
                 pieces.remove(killer.key);
                 pieces.add(0, killer.key);
                 checkKillers = true;
-            }
-        }
-
-        /////JUST DO IT!
-        tuple<Piece, Coordinate> addAtBeginning = getBestMove(zobrist.getHash());
-        boolean setCoordAtBeginning = false;
-        if(addAtBeginning != null){
-            if(pieces.contains(addAtBeginning.key)){
-                //pieces.remove(addAtBeginning.key);
-                pieces.clear();
-                pieces.add(0, addAtBeginning.key);
-                setCoordAtBeginning = true;
             }
         }
 
@@ -253,27 +257,7 @@ class MiniMax implements Callable<Double> {
             if (p.isAlive) {
                 List<Coordinate> coordinates = p.getAllValidMoves();
 
-                if(setCoordAtBeginning){
-                    coordinates.clear();
-                    coordinates.add(addAtBeginning.value);
-                    /*
-                    int co = 0;
-                    boolean isInside = false;
-                    for(Coordinate c: coordinates){
-                        if(c.x == addAtBeginning.value.x && c.y == addAtBeginning.value.y){
-                            isInside = true;
-                            break;
-                        }
-                        co++;
-                    }
-                    if(isInside) {
-                        coordinates.remove(co);
-                        coordinates.add(0, addAtBeginning.value);
-                    }
-                    */
-                    setCoordAtBeginning = false;
-                }
-                else if(checkKillers && counter < killerMoves.get(depth).size() && killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).key == p){
+                if(checkKillers && counter < killerMoves.get(depth).size() && killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).key == p){
                     Coordinate coord = killerMoves.get(depth).get(killerMoves.get(depth).size() - counter - 1).ext;
                     counter++;
                     int co = 0;
@@ -289,7 +273,28 @@ class MiniMax implements Callable<Double> {
                         coordinates.remove(co);
                         coordinates.add(0, coord);
                     }
+                } /*else if(setCoordAtBeginning){
+                    coordinates.clear();
+                    coordinates.add(addAtBeginning.value);
+
+                    int co = 0;
+                    boolean isInside = false;
+                    for(Coordinate c: coordinates){
+                        if(c.x == addAtBeginning.value.x && c.y == addAtBeginning.value.y){
+                            isInside = true;
+                            break;
+                        }
+                        co++;
+                    }
+                    if(isInside) {
+                        coordinates.remove(co);
+                        coordinates.add(0, addAtBeginning.value);
+                    }
+
+                    setCoordAtBeginning = false;
                 }
+                */
+
 
                 for (Coordinate destination : coordinates) {
                     Piece opponent = board.peek(destination);
@@ -312,19 +317,20 @@ class MiniMax implements Callable<Double> {
 
                     double evalNext = evaluateMoves(depth - 1, alpha, beta, (actualPlayer + 1) % 2);
                     if (actualPlayer == owner) {
-                        if(minmax < evalNext){
-                            bestMove = new tuple<>(p, destination);
-                        }
+                        if(minmax < evalNext)
+                           bestMove = new tuple<>(p, destination);
+
                         minmax = Math.max(minmax, evalNext);
-                        if(minmax > alpha)
+                        if(minmax > alpha) {
                             flag = HashFlag.HASH_EXACT;
+                        }
 
                         alpha = Math.max(minmax, alpha);
                     } else {
                         if(minmax > evalNext){
                             bestMove = new tuple<>(p, destination);
                         }
-                        minmax = Math.min(minmax, evaluateMoves(depth - 1, alpha, beta, (actualPlayer + 1) % 2));
+                        minmax = Math.min(minmax, evalNext);
                         beta = Math.min(minmax, beta);
                     }
 
